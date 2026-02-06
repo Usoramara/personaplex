@@ -474,7 +474,12 @@ def main():
     host_ip = args.host if args.host not in ("0.0.0.0", "::", "localhost") else get_lan_ip()
     logger.info(f"Access the Web UI directly at {protocol}://{host_ip}:{args.port}")
     if setup_tunnel is not None:
-        tunnel = setup_tunnel('localhost', args.port, tunnel_token, None)
+        import inspect
+        sig = inspect.signature(setup_tunnel)
+        if len(sig.parameters) >= 5:
+            tunnel = setup_tunnel('localhost', args.port, tunnel_token, None, None)
+        else:
+            tunnel = setup_tunnel('localhost', args.port, tunnel_token, None)
         logger.info(f"Tunnel started, if executing on a remote GPU, you can use {tunnel}.")
     web.run_app(app, port=args.port, ssl_context=ssl_context)
 
