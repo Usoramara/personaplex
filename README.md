@@ -1,3 +1,5 @@
+> **Fork of [NVIDIA/personaplex](https://github.com/NVIDIA/personaplex)** — Enhanced with deployment guides, examples, and beginner-friendly docs.
+
 # PersonaPlex: Voice and Role Control for Full Duplex Conversational Speech Models
 
 [![Weights](https://img.shields.io/badge/🤗-Weights-yellow)](https://huggingface.co/nvidia/personaplex-7b-v1)
@@ -7,11 +9,78 @@
 
 PersonaPlex is a real-time, full-duplex speech-to-speech conversational model that enables persona control through text-based role prompts and audio-based voice conditioning. Trained on a combination of synthetic and real conversations, it produces natural, low-latency spoken interactions with a consistent persona. PersonaPlex is based on the [Moshi](https://arxiv.org/abs/2410.00037) architecture and weights.
 
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Docker Quick Start](#docker-quick-start)
+- [Architecture](#architecture)
+- [Hardware Requirements](#hardware-requirements)
+- [Usage](#usage)
+- [Examples](#examples)
+- [Deployment](#deployment)
+- [Voices](#voices)
+- [Prompting Guide](#prompting-guide)
+- [Credits](#credits)
+- [License](#license)
+- [Citation](#citation)
+
+## Quick Start
+
+Get PersonaPlex running in 5 minutes:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/justwybe/Nvidia-natural-conversation-model.git
+cd Nvidia-natural-conversation-model
+pip install moshi/.
+
+# 2. Accept the model license and set your token
+#    https://huggingface.co/nvidia/personaplex-7b-v1
+export HF_TOKEN=hf_your_token_here
+
+# 3. Launch the server
+SSL_DIR=$(mktemp -d); python -m moshi.server --ssl "$SSL_DIR"
+
+# Open https://localhost:8998 in your browser
+```
+
+## Docker Quick Start
+
+```bash
+git clone https://github.com/justwybe/Nvidia-natural-conversation-model.git
+cd Nvidia-natural-conversation-model
+echo "HF_TOKEN=hf_your_token_here" > .env
+docker compose up
+```
+
+The server will be available at `https://localhost:8998`. See [docs/deployment.md](docs/deployment.md) for full Docker configuration options.
+
+## Architecture
+
 <p align="center">
   <img src="assets/architecture_diagram.png" alt="PersonaPlex Model Architecture">
   <br>
   <em>PersonaPlex Architecture</em>
 </p>
+
+PersonaPlex is a 7B-parameter model built on these core components:
+
+- **Mimi Codec** — Neural audio encoder/decoder (based on Meta's AudioCraft) that converts between raw audio waveforms and discrete tokens at 12.5 Hz with 8 codebooks
+- **Moshi LM** — Temporal Transformer (32 layers, 4096 dim) that models the joint sequence of text tokens and audio codebooks for both user and agent streams simultaneously
+- **Depformer** — Depth Transformer (6 layers, 1024 dim) that generates the 8 audio codebook tokens autoregressively at each time step
+- **SentencePiece Tokenizer** — 32K vocabulary text tokenizer for the text channel
+
+The model processes audio in full-duplex: it encodes the user's speech while simultaneously generating the agent's speech response, enabling natural conversational dynamics like interruptions, backchannels, and smooth turn-taking.
+
+## Hardware Requirements
+
+| Mode | GPU VRAM | System RAM | Notes |
+|---|---|---|---|
+| Full GPU | 16 GB+ | 16 GB+ | T4, A10G, L4, RTX 4090, A100 |
+| CPU Offload | 8 GB+ | 32 GB+ | Use `--cpu-offload` flag (requires `accelerate`) |
+| CPU Only | — | 32 GB+ | Use `--device cpu`, offline inference only, ~10-30x slower |
+
+See [Tested GPU Configurations](docs/deployment.md#tested-gpu-configurations) for detailed benchmarks.
 
 ## Usage
 
@@ -95,6 +164,34 @@ python -m moshi.offline \
   --output-text "output.json"
 ```
 
+## Examples
+
+Ready-to-run example scripts for common use cases. See [examples/README.md](examples/README.md) for full documentation.
+
+| Script | Description |
+|---|---|
+| [voice_assistant.py](examples/voice_assistant.py) | Simple WAV-in, WAV-out voice assistant |
+| [customer_service_bot.py](examples/customer_service_bot.py) | Customer service personas with 4 built-in templates |
+| [batch_inference.py](examples/batch_inference.py) | Process a directory of WAVs with single model load |
+| [custom_voice.py](examples/custom_voice.py) | Compare all 18 voices on the same input |
+
+```bash
+# Quick start with examples
+python examples/voice_assistant.py --input assets/test/input_assistant.wav
+python examples/customer_service_bot.py --list-personas
+python examples/custom_voice.py --list-voices
+```
+
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for comprehensive deployment guides:
+
+- **Docker / Docker Compose** — production-ready with GPU support and model caching
+- **RunPod** — step-by-step cloud GPU deployment
+- **AWS / GCP** — recommended instance types and security group setup
+- **Gradio Tunnel** — instant public URL with `--gradio-tunnel`
+- **Troubleshooting** — CUDA OOM, SSL certs, HF token issues, Blackwell GPUs
+
 ## Voices
 
 PersonaPlex supports a wide range of voices; we pre-package embeddings for voices that sound more natural and conversational (NAT) and others that are more varied (VAR). The fixed set of voices are labeled:
@@ -158,6 +255,12 @@ Personaplex finetunes Moshi and benefits from the generalization capabilities of
 ```
 You enjoy having a good conversation. Have a technical discussion about fixing a reactor core on a spaceship to Mars. You are an astronaut on a Mars mission. Your name is Alex. You are already dealing with a reactor core meltdown on a Mars mission. Several ship systems are failing, and continued instability will lead to catastrophic failure. You explain what is happening and you urgently ask for help thinking through how to stabilize the reactor.
 ```
+
+## Credits
+
+- **[NVIDIA PersonaPlex Team](https://github.com/NVIDIA/personaplex)** — Rajarshi Roy, Jonathan Raiman, Sang-gil Lee, Teodor-Dumitru Ene, Robert Kirby, Sungwon Kim, Jaehyeon Kim, Bryan Catanzaro
+- **[Kyutai Moshi](https://github.com/kyutai-labs/moshi)** — Base architecture and weights
+- **[Meta AudioCraft](https://github.com/facebookresearch/audiocraft)** — Mimi neural audio codec foundation
 
 ## License
 
