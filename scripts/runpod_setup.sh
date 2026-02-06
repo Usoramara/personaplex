@@ -100,21 +100,21 @@ fi
 
 # ─── Step 4: Install Python package ─────────────────────────────────────────
 
-info "Installing moshi-personaplex Python package..."
-pip install --quiet "$REPO_DIR/moshi/."
-info "Python package installed."
-
-# Install gradio if tunnel is requested
+# Install gradio first if tunnel is requested (so moshi's pinned deps take priority)
 if [[ "$GRADIO_TUNNEL" == true ]]; then
     info "Installing gradio (required for tunnel)..."
     pip install --quiet gradio
 fi
 
+info "Installing moshi-personaplex Python package..."
+pip install --quiet "$REPO_DIR/moshi/."
+info "Python package installed."
+
 # ─── Step 5: Pre-download model weights ─────────────────────────────────────
 
 info "Pre-downloading model weights from $MODEL_REPO..."
 info "  (This may take a few minutes on first run — files are cached in /root/.cache)"
-huggingface-cli download "$MODEL_REPO" --token "$HF_TOKEN"
+python -c "from huggingface_hub import snapshot_download; snapshot_download('$MODEL_REPO', token='$HF_TOKEN')"
 info "Model weights cached."
 
 # ─── Step 6: Prepare SSL directory ───────────────────────────────────────────
