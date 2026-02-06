@@ -1,0 +1,10 @@
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+
+# Pre-install system deps so setup script skips this step
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends build-essential pkg-config libopus-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Bake in the auto-start script that RunPod's /start.sh calls on boot
+COPY scripts/runpod_post_start.sh /post_start.sh
+RUN chmod +x /post_start.sh
