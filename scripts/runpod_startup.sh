@@ -3,6 +3,9 @@
 # Use this after runpod_setup.sh has already run (models are cached).
 # Suitable for RunPod's "Start Command" field.
 #
+# Auto-detects RunPod persistent volume at /runpod for cached models.
+# Auto-sources HF_TOKEN from container environment if set via RunPod UI.
+#
 # Usage: bash scripts/runpod_startup.sh [--gradio-tunnel] [--cpu-offload] [--port PORT]
 
 set -euo pipefail
@@ -12,6 +15,16 @@ set -euo pipefail
 PORT=8998
 GRADIO_TUNNEL=false
 CPU_OFFLOAD=false
+
+# ─── Auto-detect RunPod volume ───────────────────────────────────────────────
+
+if [[ -d "/runpod/huggingface_cache" ]]; then
+    CACHE_DIR="/runpod/huggingface_cache"
+elif [[ -d "/runpod" ]]; then
+    CACHE_DIR="/runpod/huggingface_cache"
+else
+    CACHE_DIR="/root/.cache"
+fi
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +42,7 @@ Options:
 
 Environment:
   HF_TOKEN          Required. Hugging Face token.
+                    (auto-sourced from container env if set via RunPod UI)
 
 This script assumes runpod_setup.sh has been run at least once
 (system deps installed, package installed, models cached).
@@ -53,7 +67,12 @@ done
 info()  { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
 
-# ─── Validate HF_TOKEN ──────────────────────────────────────────────────────
+# ─── Validate HF_TOKEN (auto-source from container env) ─────────────────────
+
+if [[ -z "${HF_TOKEN:-}" ]] && [[ -f /proc/1/environ ]]; then
+    HF_TOKEN="$(tr '\0' '\n' < /proc/1/environ | grep '^HF_TOKEN=' | cut -d= -f2- || true)"
+    export HF_TOKEN
+fi
 
 if [[ -z "${HF_TOKEN:-}" ]]; then
     error "HF_TOKEN is not set."
@@ -61,17 +80,15 @@ if [[ -z "${HF_TOKEN:-}" ]]; then
     exit 1
 fi
 
-# ─── Prepare SSL directory ───────────────────────────────────────────────────
+# ─── Set cache directory ────────────────────────────────────────────────────
 
-SSL_DIR="$(mktemp -d)/ssl"
-mkdir -p "$SSL_DIR"
+export HF_HOME="$CACHE_DIR"
 
 # ─── Launch ──────────────────────────────────────────────────────────────────
 
 SERVER_ARGS=(
     --host 0.0.0.0
     --port "$PORT"
-    --ssl "$SSL_DIR"
 )
 
 if [[ "$GRADIO_TUNNEL" == true ]]; then
@@ -83,4 +100,5 @@ if [[ "$CPU_OFFLOAD" == true ]]; then
 fi
 
 info "Starting PersonaPlex server on port $PORT..."
+info "  Cache: $CACHE_DIR"
 exec python -m moshi.server "${SERVER_ARGS[@]}"

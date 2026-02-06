@@ -7,18 +7,27 @@
 #   - HF_TOKEN environment variable set (needs access to nvidia/personaplex-7b-v1)
 #
 # This script is idempotent — safe to re-run after a pod restart.
+# Auto-detects RunPod persistent volume at /runpod for cache & repo storage.
 
 set -euo pipefail
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
 REPO_URL="https://github.com/Usoramara/personaplex.git"
-REPO_DIR="/root/personaplex"
 MODEL_REPO="nvidia/personaplex-7b-v1"
 PORT=8998
 GRADIO_TUNNEL=false
 CPU_OFFLOAD=false
-SSL_DIR=""
+
+# ─── Auto-detect RunPod volume ───────────────────────────────────────────────
+
+if [[ -d "/runpod" ]]; then
+    VOLUME_DIR="/runpod"
+else
+    VOLUME_DIR="/root"
+fi
+REPO_DIR="$VOLUME_DIR/personaplex"
+CACHE_DIR="$VOLUME_DIR/huggingface_cache"
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +45,11 @@ Options:
 
 Environment:
   HF_TOKEN          Required. Hugging Face token with access to $MODEL_REPO
+                    (auto-sourced from container env if set via RunPod UI)
+
+Volume:
+  If /runpod exists, repo and model cache are stored there (persists across
+  pod termination). Otherwise falls back to /root.
 
 Example:
   export HF_TOKEN=hf_...
@@ -61,7 +75,12 @@ done
 info()  { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
 
-# ─── Step 1: Validate HF_TOKEN ──────────────────────────────────────────────
+# ─── Step 1: Validate HF_TOKEN (auto-source from container env) ─────────────
+
+if [[ -z "${HF_TOKEN:-}" ]] && [[ -f /proc/1/environ ]]; then
+    HF_TOKEN="$(tr '\0' '\n' < /proc/1/environ | grep '^HF_TOKEN=' | cut -d= -f2- || true)"
+    export HF_TOKEN
+fi
 
 if [[ -z "${HF_TOKEN:-}" ]]; then
     error "HF_TOKEN is not set."
@@ -112,23 +131,19 @@ info "Python package installed."
 
 # ─── Step 5: Pre-download model weights ─────────────────────────────────────
 
+export HF_HOME="$CACHE_DIR"
+
 info "Pre-downloading model weights from $MODEL_REPO..."
-info "  (This may take a few minutes on first run — files are cached in /root/.cache)"
+info "  Cache directory: $CACHE_DIR"
+info "  (This may take a few minutes on first run — skips if already cached)"
 python -c "from huggingface_hub import snapshot_download; snapshot_download('$MODEL_REPO', token='$HF_TOKEN')"
 info "Model weights cached."
 
-# ─── Step 6: Prepare SSL directory ───────────────────────────────────────────
-
-SSL_DIR="$(mktemp -d)/ssl"
-mkdir -p "$SSL_DIR"
-info "SSL cert directory: $SSL_DIR"
-
-# ─── Step 7: Launch the server ───────────────────────────────────────────────
+# ─── Step 6: Launch the server ───────────────────────────────────────────────
 
 SERVER_ARGS=(
     --host 0.0.0.0
     --port "$PORT"
-    --ssl "$SSL_DIR"
 )
 
 if [[ "$GRADIO_TUNNEL" == true ]]; then
@@ -146,6 +161,8 @@ info "========================================="
 info "  Port: $PORT"
 info "  Gradio tunnel: $GRADIO_TUNNEL"
 info "  CPU offload: $CPU_OFFLOAD"
+info "  Volume: $VOLUME_DIR"
+info "  Cache: $CACHE_DIR"
 echo ""
 info "Access via RunPod proxy:"
 info "  https://<POD_ID>-${PORT}.proxy.runpod.net/"
